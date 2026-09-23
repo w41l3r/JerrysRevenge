@@ -1,0 +1,6 @@
+interface:
+  display_name: "Tomcat Enumeration"
+  short_description: "Low-noise, evidence-based Tomcat enumeration"
+  default_prompt: "Use $tomcat-enumeration to plan and document low-noise, authorized Apache Tomcat enumeration."
+policy:
+  allow_implicit_invocation: false

@@ -1,0 +1,17 @@
+# Build artifacts
+/bin/
+/jerrysrevenge
+*.test
+*.prof
+coverage.out
+
+# Runtime evidence (engagement-specific)
+/reports/
+/restricted/
+
+# Local operator and workspace material
+/.codex/
+/tomcat.md
+*.war
+*.log
+.DS_Store
