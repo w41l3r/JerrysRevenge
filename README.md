@@ -76,7 +76,14 @@ bin/jerrysrevenge -u https://tomcat.example:8443 --execute
 All hostnames and credentials in this README are placeholders. No example below
 was executed against those destinations.
 
-## Common workflows
+## Usage examples
+
+Every destination below is fictitious. Commands without `--execute` generate a
+zero-traffic plan. Review its targets, request ceiling, telemetry, and side
+effects; add `--execute` only when that exact operation is authorized. Commands
+that already contain `--execute` are explicitly described as authorized active
+examples. Each invocation creates a new timestamped report unless `--report`
+selects a different, not-yet-existing file.
 
 ### Discover Tomcat and its Manager surface
 
@@ -86,21 +93,46 @@ bin/jerrysrevenge \
   --delay 250ms
 ```
 
-Add `--execute` only after reviewing the plan.
-
-For multiple targets, provide one complete HTTP(S) base URL per line:
-
-```bash
-bin/jerrysrevenge --list targets.txt --threads 4 --delay 250ms --execute
-```
-
-### Test semicolon path-parameter variants
+After approving that plan:
 
 ```bash
 bin/jerrysrevenge \
   --url https://tomcat.example:8443 \
-  --trybypass \
+  --delay 250ms \
   --execute
+```
+
+For multiple targets, provide one complete HTTP(S) base URL per line:
+
+```text
+https://tomcat-a.example:8443
+http://tomcat-b.example:8080
+```
+
+```bash
+bin/jerrysrevenge \
+  --list targets.txt \
+  --threads 4 \
+  --delay 250ms
+```
+
+When an authorized lab uses a self-signed certificate, explicitly accept the
+TLS weakening:
+
+```bash
+bin/jerrysrevenge \
+  --url https://tomcat-lab.example:8443 \
+  --insecure
+```
+
+### Test semicolon path-parameter variants
+
+Generate the bypass-test plan:
+
+```bash
+bin/jerrysrevenge \
+  --url https://tomcat.example:8443 \
+  --trybypass
 ```
 
 The variants are sent only after Tomcat evidence is present:
@@ -132,14 +164,25 @@ SecLists Tomcat corpus used during development, adds selected Metasploit and
 weak lab/appliance combinations, contains `tomcat:root`, and travels inside the
 compiled binary. Supplying `--wordlist` replaces the bundled base list.
 
+Plan validation with the bundled corpus:
+
+```bash
+bin/jerrysrevenge \
+  --url https://tomcat.example:8443 \
+  --brute \
+  --threads 2 \
+  --delay 750ms
+```
+
+Use an operator-supplied corpus instead:
+
 ```bash
 bin/jerrysrevenge \
   --url https://tomcat.example:8443 \
   --brute \
   --wordlist manager-userpass.txt \
   --threads 4 \
-  --delay 500ms \
-  --execute
+  --delay 500ms
 ```
 
 The default is to stop after the first `CONFIRMED` credential. Use
@@ -147,6 +190,21 @@ The default is to stop after the first `CONFIRMED` credential. Use
 wordlist, Jerry's Revenge sends one intentionally invalid credential and
 requires the endpoint to respond with an unambiguous Basic challenge. HTTP
 `429` stops new attempts for that target.
+
+Continue through every candidate after finding a valid credential:
+
+```bash
+bin/jerrysrevenge \
+  --url https://tomcat.example:8443 \
+  --brute \
+  --wordlist manager-userpass.txt \
+  --continue-on-success \
+  --threads 2 \
+  --delay 1s
+```
+
+This is intentionally noisy. Review the dry-run request ceiling and lockout
+risk before adding `--execute`.
 
 Use `--company` to add a deterministic, in-memory set of organization-derived
 user/password candidates to either base list:
@@ -165,8 +223,8 @@ sanitized runbook. Review the dry-run request ceiling before adding `--execute`.
 
 ### Run the reversible deployment canary
 
-Prefer a mode-`0600` credential file containing exactly one
-`username:password` pair:
+For an authorized deployment execution, prefer a mode-`0600` credential file
+containing exactly one `username:password` pair:
 
 ```bash
 chmod 600 manager-credential.txt
@@ -182,8 +240,29 @@ Direct `--username/-U` and `--password/-P` arguments are supported, but a
 command-line password may be visible to other local users through process
 inspection.
 
-Credential validation and the canary can be chained. Only the first
-`CONFIRMED` credential is eligible for deployment:
+For a disposable lab where that exposure is explicitly acceptable:
+
+```bash
+bin/jerrysrevenge \
+  --url https://tomcat-lab.example:8443 \
+  --exploit \
+  --username manager-user \
+  --password '<PASSWORD>'
+```
+
+Validate an operator-supplied canonical static canary WAR locally and include
+it in the deployment plan:
+
+```bash
+bin/jerrysrevenge \
+  --url https://tomcat.example:8443 \
+  --exploit \
+  --creds-file manager-credential.txt \
+  --war-file static-canary.war
+```
+
+Credential validation and the canary can be chained in one authorized
+execution. Only the first `CONFIRMED` credential is eligible for deployment:
 
 ```bash
 bin/jerrysrevenge \
@@ -195,6 +274,24 @@ bin/jerrysrevenge \
 ```
 
 An `INFERRED` `401 -> 403` transition is never used automatically for upload.
+
+### Build a combined assessment plan
+
+The options can be composed. This example remains a dry run and displays the
+maximum HTTP request count before any traffic is permitted:
+
+```bash
+bin/jerrysrevenge \
+  --url https://tomcat.example:8443 \
+  --trybypass \
+  --brute \
+  --company "Example Corporation" \
+  --threads 2 \
+  --delay 1s
+```
+
+Do not assume that approval for discovery also covers bypass or credential
+validation; authorize every phase represented in the combined plan.
 
 ## How discovery works
 
@@ -227,7 +324,7 @@ port `8009`, and the web-application-relative file `WEB-INF/web.xml`:
 bin/jerrysrevenge \
   --url https://tomcat.example:8443 \
   --ghostcat \
-  --ajp-host 10.0.0.25 \
+  --ajp-host ajp.tomcat.example \
   --ajp-port 8009 \
   --ghostcat-file WEB-INF/web.xml
 ```
@@ -238,8 +335,35 @@ one override from silently redirecting a multi-target run.
 
 The first invocation remains a zero-traffic plan. Add `--execute` only after
 separately confirming that the AJP host, port, file, and acquisition are within
-scope. A successful response is sensitive-data acquisition: raw bytes are
-written to a new mode-`0600` file below the mode-`0700`
+scope. An authorized execution of that exact default-file plan looks like:
+
+```bash
+bin/jerrysrevenge \
+  --url https://tomcat.example:8443 \
+  --ghostcat \
+  --ajp-host ajp.tomcat.example \
+  --ajp-port 8009 \
+  --ghostcat-file WEB-INF/web.xml \
+  --execute
+```
+
+Select a different web-application-relative resource and evidence directory
+when both are explicitly in scope:
+
+```bash
+bin/jerrysrevenge \
+  --url https://tomcat.example:8443 \
+  --ghostcat \
+  --ajp-host ajp.tomcat.example \
+  --ajp-port 8009 \
+  --ghostcat-file WEB-INF/classes/application.properties \
+  --ghostcat-output-dir restricted/example-ghostcat
+```
+
+The custom-file example is deliberately shown without `--execute`; its body
+may contain credentials or other sensitive configuration. A successful
+response is sensitive-data acquisition: raw bytes are written to a new
+mode-`0600` file below the mode-`0700`
 `--ghostcat-output-dir`, while terminal output and the sanitized report contain
 only protocol metadata, byte count, SHA-256, and the restricted path. Input
 paths reject URLs, literal or percent-encoded traversal, path parameters, query
@@ -340,6 +464,19 @@ restricted/jerrysrevenge-credentials.jsonl
 The inventory is created with mode `0600`. Both directories are ignored by
 Git and must remain outside normal report exports and shared evidence bundles.
 Use `--report` and `--credential-inventory` to select different locations.
+
+For example, keep one engagement's sanitized and restricted outputs separate:
+
+```bash
+bin/jerrysrevenge \
+  --url https://tomcat.example:8443 \
+  --brute \
+  --report reports/example-manager-plan.md \
+  --credential-inventory restricted/example-manager-credentials.jsonl
+```
+
+The report path must not already exist. The restricted inventory receives a
+record only when an executed validation confirms a credential.
 
 Successful Ghostcat response bodies are kept separately under
 `restricted/ghostcat/` by default. Treat those files as acquired target data;
