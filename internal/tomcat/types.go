@@ -173,6 +173,52 @@ type DeploymentResult struct {
 	Interpretation       string
 }
 
+// GhostcatAssessment is the mandatory offline CVE-2020-1938 applicability
+// check derived from observed version evidence. It never claims that version
+// matching alone proves an exposed or exploitable AJP connector.
+type GhostcatAssessment struct {
+	Version        string
+	VersionMatched bool
+	Authoritative  bool
+	AffectedRange  string
+	FirstFixed     string
+	Classification Classification
+	Interpretation string
+}
+
+// GhostcatResult captures one explicitly requested AJP file-read attempt.
+// Returned file bytes are never held here; they are written directly to the
+// restricted evidence path with mode 0600.
+type GhostcatResult struct {
+	Assessment          GhostcatAssessment
+	Requested           bool
+	Executed            bool
+	SkipReason          string
+	Host                string
+	Port                int
+	Endpoint            string
+	RequestedFile       string
+	RequestCount        int
+	RequestSent         bool
+	StartedAt           time.Time
+	FinishedAt          time.Time
+	Duration            time.Duration
+	ResponseMagic       string
+	ResponseStatusCode  int
+	ResponseStatus      string
+	ResponseContentType string
+	ProtocolConfirmed   bool
+	BodyAcquired        bool
+	FileReadConfirmed   bool
+	BodyBytes           int
+	BodySHA256          string
+	BodyTruncated       bool
+	EvidencePath        string
+	Classification      Classification
+	Interpretation      string
+	Error               string
+}
+
 // Result is the complete result for one target.
 type Result struct {
 	Target      *url.URL
@@ -181,4 +227,5 @@ type Result struct {
 	Manager     ManagerResult
 	Brute       BruteResult
 	Deployment  DeploymentResult
+	Ghostcat    GhostcatResult
 }

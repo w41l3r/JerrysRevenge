@@ -25,6 +25,27 @@ Record the URL, access time, and branch. Do not copy a static “latest patch”
 
 A version below the upstream fix confirms, at most, relevance to the upstream affected range. It does not confirm vulnerable configuration, reachability, an auxiliary primitive, or absence of a backport.
 
+## Mandatory Ghostcat entry
+
+For every precisely identified Tomcat version, evaluate CVE-2020-1938
+explicitly and retain the result in the final report. This applies even when a
+branch is end-of-life, outside the advisory's explicit range, apparently fixed,
+or relegated to the excluded/unresolved appendix. Record:
+
+- the observed version and evidence quality;
+- the official affected/fixed range when one exists;
+- whether AJP enablement, reachability, bind controls, shared-secret controls,
+  virtual host/context, and the selected resource are confirmed or unverified;
+- a `POTENTIAL` or `UNVERIFIED` applicability classification unless authorized
+  behavior confirms every relevant prerequisite;
+- public-PoC status using the same source and timestamp rules as the ranked
+  table.
+
+This mandatory check is passive version and public-source research. It does not
+authorize connecting to AJP, reading a file, evaluating JSP, or executing a
+PoC. Any active AJP action needs its own exact endpoint, file, request budget,
+risk disclosure, and operator approval.
+
 ## Required CVSS > 6.0 ranked output
 
 After a Tomcat version is identified, perform current passive research and produce a ranked table. This is Internet research against public sources, not permission to send any additional request to the assessed target.
@@ -47,6 +68,8 @@ Apply these rules:
 - Sort by the selected numeric score descending, then by CVE ID as a deterministic tie-breaker.
 - Keep configuration-dependent cases `POTENTIAL` until every indispensable prerequisite is evidenced. Version applicability is not vulnerability confirmation.
 - Put entries with missing scores, ambiguous branches, or unresolved applicability in an excluded/unresolved appendix.
+- Never silently drop CVE-2020-1938; if it does not fit the main table, place
+  its dedicated assessment in that excluded/unresolved appendix.
 - If no entry survives the filter, state that result and list the sources searched.
 
 Use at least these columns:

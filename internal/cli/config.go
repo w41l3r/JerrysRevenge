@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const DefaultUserAgent = "JerrysRevenge/0.3.0 (authorized Tomcat validation)"
+const DefaultUserAgent = "JerrysRevenge/0.4.0 (authorized Tomcat validation)"
 
 type Config struct {
 	URL               string
@@ -18,8 +18,14 @@ type Config struct {
 	TryBypass         bool
 	Brute             bool
 	Wordlist          string
+	Company           string
 	Threads           int
 	ContinueOnSuccess bool
+	Ghostcat          bool
+	GhostcatFile      string
+	GhostcatOutputDir string
+	AJPHost           string
+	AJPPort           int
 	DeployCheck       bool
 	WarFile           string
 	Username          string
@@ -46,11 +52,17 @@ func Parse(args []string, stderr io.Writer, now time.Time) (Config, error) {
 	fs.BoolVar(&cfg.TryBypass, "trybypass", false, "test semicolon-delimited path-parameter variants")
 	fs.BoolVar(&cfg.Brute, "b", false, "enable Tomcat Manager credential validation")
 	fs.BoolVar(&cfg.Brute, "brute", false, "enable Tomcat Manager credential validation")
-	fs.StringVar(&cfg.Wordlist, "w", "", "username:password wordlist (required with --brute)")
-	fs.StringVar(&cfg.Wordlist, "wordlist", "", "username:password wordlist (required with --brute)")
+	fs.StringVar(&cfg.Wordlist, "w", "", "username:password wordlist; overrides the bundled list")
+	fs.StringVar(&cfg.Wordlist, "wordlist", "", "username:password wordlist; overrides the bundled list")
+	fs.StringVar(&cfg.Company, "company", "", "add bounded password candidates derived from an organization name")
 	fs.IntVar(&cfg.Threads, "t", 4, "global limit for concurrent HTTP requests")
 	fs.IntVar(&cfg.Threads, "threads", 4, "global limit for concurrent HTTP requests")
 	fs.BoolVar(&cfg.ContinueOnSuccess, "continue-on-success", false, "continue through the wordlist after a valid credential is found")
+	fs.BoolVar(&cfg.Ghostcat, "ghostcat", false, "perform one explicitly authorized CVE-2020-1938 AJP file-read attempt")
+	fs.StringVar(&cfg.GhostcatFile, "ghostcat-file", "WEB-INF/web.xml", "web-application-relative file for --ghostcat")
+	fs.StringVar(&cfg.GhostcatOutputDir, "ghostcat-output-dir", filepath.Join("restricted", "ghostcat"), "mode-0700 directory for mode-0600 Ghostcat response evidence")
+	fs.StringVar(&cfg.AJPHost, "ajp-host", "", "explicit AJP host for one --url target; defaults to its hostname")
+	fs.IntVar(&cfg.AJPPort, "ajp-port", 8009, "AJP port for --ghostcat")
 	fs.BoolVar(&cfg.DeployCheck, "e", false, "run a reversible static-canary deployment check; never executes commands")
 	fs.BoolVar(&cfg.DeployCheck, "exploit", false, "run a reversible static-canary deployment check; never executes commands")
 	fs.StringVar(&cfg.WarFile, "war-file", "", "canonical static-canary WAR; defaults to an in-memory canary")
@@ -78,6 +90,10 @@ func Parse(args []string, stderr io.Writer, now time.Time) (Config, error) {
 	if err := fs.Parse(args); err != nil {
 		return Config{}, err
 	}
+	visited := make(map[string]bool)
+	fs.Visit(func(item *flag.Flag) {
+		visited[item.Name] = true
+	})
 	if fs.NArg() != 0 {
 		return Config{}, fmt.Errorf("%d unexpected positional argument(s)", fs.NArg())
 	}
@@ -96,14 +112,35 @@ func Parse(args []string, stderr io.Writer, now time.Time) (Config, error) {
 	if cfg.Delay < 0 {
 		return Config{}, errors.New("delay cannot be negative")
 	}
-	if cfg.Brute && cfg.Wordlist == "" {
-		return Config{}, errors.New("-w/--wordlist is required with -b/--brute")
-	}
 	if !cfg.Brute && cfg.Wordlist != "" {
 		return Config{}, errors.New("-w/--wordlist requires -b/--brute")
 	}
+	if !cfg.Brute && strings.TrimSpace(cfg.Company) != "" {
+		return Config{}, errors.New("--company requires -b/--brute")
+	}
+	if visited["company"] && strings.TrimSpace(cfg.Company) == "" {
+		return Config{}, errors.New("--company cannot be empty")
+	}
 	if cfg.ContinueOnSuccess && !cfg.Brute {
 		return Config{}, errors.New("--continue-on-success requires -b/--brute")
+	}
+	ghostcatOptionSet := visited["ghostcat-file"] || visited["ghostcat-output-dir"] || visited["ajp-host"] || visited["ajp-port"]
+	if !cfg.Ghostcat && ghostcatOptionSet {
+		return Config{}, errors.New("--ghostcat-file, --ghostcat-output-dir, --ajp-host, and --ajp-port require --ghostcat")
+	}
+	if cfg.Ghostcat {
+		if cfg.AJPPort < 1 || cfg.AJPPort > 65535 {
+			return Config{}, errors.New("ajp-port must be between 1 and 65535")
+		}
+		if strings.TrimSpace(cfg.GhostcatFile) == "" {
+			return Config{}, errors.New("ghostcat-file cannot be empty")
+		}
+		if strings.TrimSpace(cfg.GhostcatOutputDir) == "" {
+			return Config{}, errors.New("ghostcat-output-dir cannot be empty")
+		}
+		if cfg.List != "" && strings.TrimSpace(cfg.AJPHost) != "" {
+			return Config{}, errors.New("--ajp-host cannot be combined with --list; put each intended hostname in its URL")
+		}
 	}
 
 	directCredential := cfg.Username != "" || cfg.Password != ""

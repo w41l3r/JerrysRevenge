@@ -14,8 +14,10 @@ make vet
 make build
 ```
 
-HTTP tests must use local ephemeral listeners. Tests and examples must never
-contact a public system or an engagement target.
+HTTP and AJP tests must use local ephemeral listeners. Tests and examples must
+never contact a public system or an engagement target. A deliberately
+vulnerable Docker fixture must bind every published port to loopback, use a
+pinned image digest, and document teardown and retained artifacts.
 
 ## Pull requests
 
@@ -40,7 +42,9 @@ workflow must expose its precise scope, request ceiling, likely telemetry,
 side effects, and cleanup behavior before execution.
 
 Never add real credentials, session material, customer names, private targets,
-raw engagement evidence, or files from `reports/` and `restricted/`.
+raw engagement evidence, or files from `reports/` and `restricted/`. Ghostcat
+response bodies are acquired target data and must remain restricted even when
+the selected resource appears benign.
 
 ## Security issues
 

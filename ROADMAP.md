@@ -32,41 +32,44 @@ Required properties:
 
 ## CVE-2020-1938 (Ghostcat) and AJP
 
-**Status:** design pending; not implemented; no target traffic performed.
+**Status:** bounded version assessment and single-file validation implemented
+in `0.4.0`; broader AJP discovery remains out of scope.
 
-Add AJP as an independently scoped surface. An HTTP Tomcat endpoint does not
-authorize probing the same host on an AJP port, and an open AJP port does not by
-itself confirm CVE-2020-1938.
+The implemented workflow keeps AJP as an independently scoped surface. An HTTP
+Tomcat endpoint does not authorize probing the same host on an AJP port, and an
+open AJP port does not by itself confirm CVE-2020-1938.
 
-Keep the future workflow split into explicit levels:
+Current behavior:
 
 1. **Offline applicability:** correlate reliable Tomcat version evidence with
-   the official affected ranges and record all unverified prerequisites.
-2. **AJP discovery:** test only an operator-supplied host and port for the AJP
-   protocol and relevant access controls. This is active enumeration and must
-   have its own reviewed request budget and approval.
-3. **Controlled validation:** demonstrate the file-read primitive only with an
-   operator-supplied, known-benign resource where practical. Do not use a
-   sensitive path as an automatic default.
-4. **Arbitrary-file-read mode:** require an explicit action, exact context and
-   path, and separate exploitation approval. Treat returned content as acquired
-   sensitive data: keep raw bytes in restricted mode-`0600` evidence and put
-   only metadata, hashes, and a sanitized interpretation in the main report.
+   the official affected ranges on every completed discovery run and record all
+   unverified prerequisites. This step is local and sends no additional
+   request.
+2. **Controlled validation:** `--ghostcat --execute` sends one AJP13 request to
+   the exact planned host and port for one web-application-relative file. The
+   default is `WEB-INF/web.xml`; `--ghostcat-file` can select another in-scope
+   resource. There are no automatic retries.
+3. **Evidence handling:** returned bytes are capped at 1 MiB and stored only in
+   mode-`0600` restricted evidence below a mode-`0700` directory. Normal output
+   and the sanitized report contain metadata and a SHA-256, not the body.
 
-Additional design requirements:
+Implemented constraints:
 
-- accept a non-default AJP port and optional AJP shared secret without exposing
-  the secret in process arguments, terminal output, or sanitized reports;
-- do not automatically chain discovery into file access;
+- accept a non-default AJP host and port;
+- never turn the always-on version assessment into automatic file access;
 - do not retry file reads automatically;
 - preserve a strict response-size limit and reject traversal outside the
-  operator-supplied context and path;
+  selected web-application-relative path;
 - classify version-only applicability as `POTENTIAL`, not `CONFIRMED`;
-- distinguish AJP reachability, missing/incorrect secret behavior, successful
-  benign validation, and confirmed acquisition of the requested file;
+- distinguish AJP protocol confirmation and body acquisition from confirmed
+  identity of the requested file; non-default content remains `INFERRED` until
+  operator review;
 - record exact request counts and every negative result in the chronological
   runbook.
 
-Ghostcat-assisted JSP inclusion or command execution is not part of this
-roadmap item. It would require a separate project-owner design decision, safety
-review, implementation boundary, and action-specific authorization.
+Future design topics include shared-secret input without exposing the secret,
+explicit virtual-host/context selection, and an AJP-only workflow that can use
+previously collected HTTP evidence without repeating discovery.
+
+Ghostcat-assisted JSP inclusion, upload, command execution, callbacks, and bulk
+file collection are not part of this project boundary.

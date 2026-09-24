@@ -62,6 +62,22 @@ After a Tomcat version is identified and the operator has consented to use the `
 
 If no CVE meets the threshold, say so explicitly and list the consulted sources. Put CVEs with no usable CVSS score or uncertain version applicability in a separate excluded/unresolved section rather than silently dropping them.
 
+Always include a dedicated CVE-2020-1938/Ghostcat assessment for every precise
+Tomcat version. If an EOL or ambiguous branch does not fit the main ranked
+table, retain it in the excluded/unresolved section with its prerequisites and
+public-PoC status. This is passive research only and never authorizes an AJP
+connection or file read.
+
 ## Project safety boundary
 
-Jerry's Revenge may implement and validate only the reversible static-canary deployment workflow documented in `README.md`. Do not add command execution, JSP or other server-side payloads, web shells, callbacks, persistence, arbitrary executable WAR handling, or a bypass-assisted deployment path without a new explicit design decision from the project owner and an appropriate safety review.
+Jerry's Revenge may implement and validate the reversible static-canary
+deployment workflow and the bounded Ghostcat file-read workflow documented in
+`README.md`. Ghostcat is limited to one operator-selected,
+web-application-relative resource per target, an explicit `--ghostcat
+--execute` gate, no retry, a 1 MiB response cap, and mode-`0600` restricted raw
+evidence. It must not be chained automatically from version detection.
+
+Do not add command execution, Ghostcat JSP evaluation, server-side payloads,
+web shells, callbacks, persistence, bulk file collection, arbitrary executable
+WAR handling, or a bypass-assisted deployment path without a new explicit
+design decision from the project owner and an appropriate safety review.

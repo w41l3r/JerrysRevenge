@@ -1,0 +1,18 @@
+services:
+  tomcat:
+    image: tomcat@sha256:268403c3fa09afd9310ced7e83ac021927dca0f04a394a80a0b0220f62e056ed
+    container_name: jerrysrevenge-ghostcat-lab
+    restart: "no"
+    ports:
+      - "127.0.0.1:18080:8080"
+      - "127.0.0.1:18009:8009"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - ghostcat-lab
+
+networks:
+  ghostcat-lab:
+    internal: true

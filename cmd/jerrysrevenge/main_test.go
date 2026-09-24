@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -15,11 +16,25 @@ import (
 
 func TestRunRequiresExecuteBeforeSendingTraffic(t *testing.T) {
 	var requests atomic.Int64
+	var ajpConnections atomic.Int64
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
 		fmt.Fprint(w, "unexpected")
 	}))
 	defer server.Close()
+	ajpListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ajpDone := make(chan struct{})
+	go func() {
+		defer close(ajpDone)
+		connection, acceptErr := ajpListener.Accept()
+		if acceptErr == nil {
+			ajpConnections.Add(1)
+			connection.Close()
+		}
+	}()
 
 	temp := t.TempDir()
 	stdout := createTestFile(t, filepath.Join(temp, "stdout.txt"))
@@ -31,13 +46,24 @@ func TestRunRequiresExecuteBeforeSendingTraffic(t *testing.T) {
 		"jerrysrevenge",
 		"-u", server.URL,
 		"--trybypass",
+		"--ghostcat",
+		"--ajp-port", fmt.Sprintf("%d", ajpListener.Addr().(*net.TCPAddr).Port),
+		"--ghostcat-output-dir", filepath.Join(temp, "restricted", "ghostcat"),
 		"--report", filepath.Join(temp, "plan.md"),
 	}, stdout, stderr)
+	ajpListener.Close()
+	<-ajpDone
 	if code != 0 {
 		t.Fatalf("run returned %d", code)
 	}
 	if requests.Load() != 0 {
 		t.Fatalf("planning mode sent %d HTTP requests", requests.Load())
+	}
+	if ajpConnections.Load() != 0 {
+		t.Fatalf("planning mode opened %d AJP connections", ajpConnections.Load())
+	}
+	if _, err := os.Stat(filepath.Join(temp, "restricted", "ghostcat")); !os.IsNotExist(err) {
+		t.Fatalf("planning mode created the Ghostcat evidence directory: %v", err)
 	}
 	content, err := os.ReadFile(filepath.Join(temp, "plan.md"))
 	if err != nil {
@@ -45,6 +71,55 @@ func TestRunRequiresExecuteBeforeSendingTraffic(t *testing.T) {
 	}
 	if !strings.Contains(string(content), "EVALUATED — NOT EXECUTED") {
 		t.Fatal("planning status missing from report")
+	}
+}
+
+func TestRunRejectsGhostcatInputsBeforeHTTP(t *testing.T) {
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		fmt.Fprint(w, "unexpected")
+	}))
+	defer server.Close()
+
+	temp := t.TempDir()
+	unsafeDir := filepath.Join(temp, "unsafe")
+	if err := os.Mkdir(unsafeDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(unsafeDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name  string
+		extra []string
+	}{
+		{name: "invalid AJP host", extra: []string{"--ajp-host", "bad/host"}},
+		{name: "unsafe evidence directory", extra: []string{"--ghostcat-output-dir", unsafeDir}},
+	}
+	for index, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			requests.Store(0)
+			stdout := createTestFile(t, filepath.Join(temp, fmt.Sprintf("stdout-%d.txt", index)))
+			stderr := createTestFile(t, filepath.Join(temp, fmt.Sprintf("stderr-%d.txt", index)))
+			defer stdout.Close()
+			defer stderr.Close()
+
+			args := []string{
+				"jerrysrevenge",
+				"--url", server.URL,
+				"--ghostcat",
+				"--execute",
+				"--report", filepath.Join(temp, fmt.Sprintf("report-%d.md", index)),
+			}
+			args = append(args, test.extra...)
+			if code := run(args, stdout, stderr); code != 2 {
+				t.Fatalf("run returned %d, want 2", code)
+			}
+			if got := requests.Load(); got != 0 {
+				t.Fatalf("invalid local input caused %d HTTP requests", got)
+			}
+		})
 	}
 }
 

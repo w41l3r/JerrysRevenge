@@ -35,6 +35,48 @@ func TestParseBruteAliasesAndDefaults(t *testing.T) {
 	}
 }
 
+func TestParseBruteUsesBundledWordlistAndAcceptsCompany(t *testing.T) {
+	now := time.Date(2026, 9, 22, 1, 2, 3, 0, time.FixedZone("BRT", -3*60*60))
+	cfg, err := Parse([]string{"--url", "https://example.test", "--brute", "--company", "Acme Corp"}, &bytes.Buffer{}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Brute || cfg.Wordlist != "" || cfg.Company != "Acme Corp" {
+		t.Fatalf("unexpected config: %+v", cfg)
+	}
+	for _, args := range [][]string{
+		{"--url", "https://example.test", "--company", "Acme"},
+		{"--url", "https://example.test", "--company", "   ", "--brute"},
+	} {
+		if _, err := Parse(args, &bytes.Buffer{}, now); err == nil {
+			t.Fatalf("Parse(%v) unexpectedly succeeded", args)
+		}
+	}
+}
+
+func TestParseGhostcatScopeAndDefaults(t *testing.T) {
+	now := time.Date(2026, 9, 22, 1, 2, 3, 0, time.FixedZone("BRT", -3*60*60))
+	cfg, err := Parse([]string{"--url", "https://example.test", "--ghostcat"}, &bytes.Buffer{}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Ghostcat || cfg.GhostcatFile != "WEB-INF/web.xml" || cfg.AJPPort != 8009 {
+		t.Fatalf("unexpected Ghostcat defaults: %+v", cfg)
+	}
+
+	invalid := [][]string{
+		{"--url", "https://example.test", "--ajp-port", "8010"},
+		{"--url", "https://example.test", "--ghostcat-file", "WEB-INF/web.xml"},
+		{"--url", "https://example.test", "--ghostcat", "--ajp-port", "0"},
+		{"--list", "targets.txt", "--ghostcat", "--ajp-host", "ajp.example.test"},
+	}
+	for _, args := range invalid {
+		if _, err := Parse(args, &bytes.Buffer{}, now); err == nil {
+			t.Fatalf("Parse(%v) unexpectedly succeeded", args)
+		}
+	}
+}
+
 func TestParseDeployCredentialRules(t *testing.T) {
 	now := time.Date(2026, 9, 22, 1, 2, 3, 0, time.FixedZone("BRT", -3*60*60))
 	valid := [][]string{

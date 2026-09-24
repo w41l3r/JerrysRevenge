@@ -64,6 +64,14 @@ Use `CONFIRMED`, `INFERRED`, `POTENTIAL`, or `UNVERIFIED` for every material con
 
 A product or version never confirms a vulnerability by itself. Distribution builds may contain backports, and banners may be changed.
 
+Whenever a precise Tomcat version is identified, always create a dedicated
+CVE-2020-1938/Ghostcat applicability entry in addition to the general ranked
+CVE research. Do not silently omit it for an EOL branch, an ambiguous upstream
+range, or an apparently fixed version: record the result as `POTENTIAL` or
+`UNVERIFIED` with the reason and prerequisites. This requirement is passive
+version correlation only. AJP discovery or file access remains an active action
+that requires separate, action-specific approval.
+
 ### 3. Handle authentication and credentials
 
 - Treat supplied credentials as non-administrative unless the operator states otherwise.
@@ -84,5 +92,9 @@ Deliver:
 - the next minimum test as a recommendation, without running it if new approval is required.
 
 When a Tomcat version has been identified, have the dedicated research subagent produce the CVSS-greater-than-6.0 CVE table required by [references/version-and-prerequisites.md](references/version-and-prerequisites.md). Sort it from most to least critical and include a brief description and time-bounded public-PoC status for every retained CVE. Keep the research results internal until the primary agent delivers the consolidated final response and report.
+
+The final CVE output must include the dedicated CVE-2020-1938 entry even when
+its applicability is unresolved or it appears only in the excluded/unresolved
+section. Never convert that passive requirement into an automatic AJP request.
 
 Do not turn write-up material into captured output, and do not describe a proposed command as executed.

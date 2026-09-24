@@ -283,6 +283,8 @@ func sanitizeCommandArgs(args []string) []string {
 				result[index] = "<USERNAME:DIRECT-CLI>"
 			case "password":
 				result[index] = "<PASSWORD:DIRECT-CLI>"
+			case "company":
+				result[index] = "<COMPANY:REDACTED>"
 			}
 			redactNext = ""
 			continue
@@ -290,10 +292,12 @@ func sanitizeCommandArgs(args []string) []string {
 		switch arg {
 		case "-u", "--url":
 			redactNext = "url"
-		case "-U", "--username":
+		case "-U", "-username", "--username":
 			redactNext = "username"
-		case "-P", "--password":
+		case "-P", "-password", "--password":
 			redactNext = "password"
+		case "-company", "--company":
+			redactNext = "company"
 		default:
 			switch {
 			case strings.HasPrefix(arg, "--url="):
@@ -302,12 +306,20 @@ func sanitizeCommandArgs(args []string) []string {
 				result[index] = "-u=" + sanitizeURLArgument(strings.TrimPrefix(arg, "-u="))
 			case strings.HasPrefix(arg, "--username="):
 				result[index] = "--username=<USERNAME:DIRECT-CLI>"
+			case strings.HasPrefix(arg, "-username="):
+				result[index] = "-username=<USERNAME:DIRECT-CLI>"
 			case strings.HasPrefix(arg, "-U="):
 				result[index] = "-U=<USERNAME:DIRECT-CLI>"
 			case strings.HasPrefix(arg, "--password="):
 				result[index] = "--password=<PASSWORD:DIRECT-CLI>"
+			case strings.HasPrefix(arg, "-password="):
+				result[index] = "-password=<PASSWORD:DIRECT-CLI>"
 			case strings.HasPrefix(arg, "-P="):
 				result[index] = "-P=<PASSWORD:DIRECT-CLI>"
+			case strings.HasPrefix(arg, "--company="):
+				result[index] = "--company=<COMPANY:REDACTED>"
+			case strings.HasPrefix(arg, "-company="):
+				result[index] = "-company=<COMPANY:REDACTED>"
 			}
 		}
 	}

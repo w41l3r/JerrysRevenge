@@ -153,6 +153,63 @@ func TestReporterRedactsDirectCredentialArguments(t *testing.T) {
 	}
 }
 
+func TestReporterRedactsCompanyArgument(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "report.md")
+	reporter, err := NewReporter(ReportConfig{
+		Path:       path,
+		RunID:      "test",
+		Command:    []string{"jerrysrevenge", "-u", "https://example.test", "--brute", "--company", "Private Client Name"},
+		WorkingDir: "/tmp/test",
+		Timeout:    10 * time.Second,
+		UserAgent:  "test-agent",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := reporter.Close(); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(content)
+	if strings.Contains(text, "Private Client Name") {
+		t.Fatal("report leaked the company argument")
+	}
+	if !strings.Contains(text, "<COMPANY:REDACTED>") {
+		t.Fatal("report did not preserve the company placeholder")
+	}
+}
+
+func TestReporterRedactsSingleDashLongArguments(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "report.md")
+	reporter, err := NewReporter(ReportConfig{
+		Path:       path,
+		RunID:      "test",
+		Command:    []string{"jerrysrevenge", "-u", "https://example.test", "-company=PrivateName", "-username=operator", "-password=private-value"},
+		WorkingDir: "/tmp/test",
+		Timeout:    10 * time.Second,
+		UserAgent:  "test-agent",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := reporter.Close(); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(content)
+	for _, secret := range []string{"PrivateName", "operator", "private-value"} {
+		if strings.Contains(text, secret) {
+			t.Fatalf("report leaked %q", secret)
+		}
+	}
+}
+
 func TestReporterDescribesMultipartUploadWithoutSessionOrCSRFMaterial(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "report.md")
 	reporter, err := NewReporter(ReportConfig{

@@ -6,17 +6,26 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/url"
+	"strconv"
+	"time"
 )
 
 type ScanOptions struct {
-	TryBypass         bool
-	Brute             bool
-	ContinueOnSuccess bool
-	Threads           int
-	Credentials       []Credential
-	DeployCheck       bool
-	DeployCredential  *Credential
-	Canary            *CanaryArtifact
+	TryBypass          bool
+	Brute              bool
+	ContinueOnSuccess  bool
+	Threads            int
+	Credentials        []Credential
+	Ghostcat           bool
+	GhostcatFile       string
+	GhostcatOutputDir  string
+	GhostcatEvidenceID string
+	AJPHost            string
+	AJPPort            int
+	Timeout            time.Duration
+	DeployCheck        bool
+	DeployCredential   *Credential
+	Canary             *CanaryArtifact
 }
 
 func ScanTarget(ctx context.Context, requester *Requester, target *url.URL, opts ScanOptions) Result {
@@ -71,6 +80,29 @@ func ScanTarget(ctx context.Context, requester *Requester, target *url.URL, opts
 
 	result.Fingerprint = AnalyzeFingerprint(result.Probes)
 	result.Manager.Evidence = uniqueStrings(result.Manager.Evidence)
+	result.Ghostcat.Assessment = AssessGhostcatVersion(result.Fingerprint.Version)
+	result.Ghostcat.Requested = opts.Ghostcat
+	result.Ghostcat.RequestedFile = opts.GhostcatFile
+	result.Ghostcat.Port = opts.AJPPort
+	if opts.Ghostcat {
+		ajpHost := opts.AJPHost
+		if ajpHost == "" {
+			ajpHost = target.Hostname()
+		}
+		ghostcat := ReadGhostcatFile(ctx, GhostcatConfig{
+			Host:       ajpHost,
+			Port:       opts.AJPPort,
+			ServerName: target.Hostname(),
+			ServerPort: targetServerPort(target),
+			IsSSL:      target.Scheme == "https",
+			File:       opts.GhostcatFile,
+			Timeout:    opts.Timeout,
+			OutputDir:  opts.GhostcatOutputDir,
+			EvidenceID: opts.GhostcatEvidenceID + "-" + targetToken(target.String()),
+		})
+		ghostcat.Assessment = result.Ghostcat.Assessment
+		result.Ghostcat = ghostcat
+	}
 
 	result.Brute.Requested = opts.Brute
 	if opts.Brute {
@@ -135,6 +167,21 @@ func ScanTarget(ctx context.Context, requester *Requester, target *url.URL, opts
 		}
 	}
 	return result
+}
+
+func targetServerPort(target *url.URL) int {
+	if target == nil {
+		return 80
+	}
+	if raw := target.Port(); raw != "" {
+		if port, err := strconv.Atoi(raw); err == nil && port >= 1 && port <= 65535 {
+			return port
+		}
+	}
+	if target.Scheme == "https" {
+		return 443
+	}
+	return 80
 }
 
 func analyzeManagerDirect(probe Probe) ManagerResult {

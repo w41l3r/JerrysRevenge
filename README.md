@@ -5,13 +5,13 @@
 <h1 align="center">Jerry's Revenge</h1>
 
 <p align="center">
-  Evidence-driven Apache Tomcat discovery, Manager validation, and reversible deployment testing.
+  Evidence-driven Apache Tomcat discovery, enumeration and security auditing tool.
 </p>
 
 <p align="center">
   <a href="https://github.com/w41l3r/JerrysRevenge/actions/workflows/ci.yml"><img src="https://github.com/w41l3r/JerrysRevenge/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/Go-1.24%2B-00ADD8?logo=go&logoColor=white" alt="Go 1.24+">
-  <img src="https://img.shields.io/badge/version-0.3.0-f59e0b" alt="Version 0.3.0">
+  <img src="https://img.shields.io/badge/version-0.4.0-f59e0b" alt="Version 0.4.0">
   <img src="https://img.shields.io/badge/default-dry--run-2ea44f" alt="Dry-run by default">
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT License"></a>
 </p>
@@ -19,13 +19,18 @@
 > [!IMPORTANT]
 > Jerry's Revenge is intended only for systems you own or are explicitly
 > authorized to assess. Credential testing, access-control checks, and
-> deployment validation are active and detectable operations. The default run
-> is a zero-traffic plan; target requests require `--execute`.
+> deployment validation are active and detectable operations. Ghostcat file
+> acquisition is also active exploitation and may retrieve sensitive data. The
+> default run is a zero-traffic plan; HTTP or AJP target requests require
+> `--execute`.
 
 Jerry's Revenge is a Go CLI for authorized Apache Tomcat assessments. It
 correlates multiple HTTP signals instead of trusting a port number or a single
 banner, checks the Manager surface, supports bounded credential validation, and
-can prove Manager deployment capability with a temporary static canary.
+can prove Manager deployment capability with a temporary static canary. Every
+identified version receives a local CVE-2020-1938 applicability assessment;
+an explicitly selected Ghostcat mode can perform one bounded AJP file-read
+validation and preserve the returned bytes as restricted evidence.
 
 The tool does **not** execute commands, deploy JSPs, create web shells, establish
 callbacks, or provide persistence. The legacy `-e/--exploit` option performs
@@ -38,8 +43,9 @@ only the reversible static-canary workflow documented below.
 | Tomcat fingerprinting | Correlates the base page, a controlled 404, documentation markers, headers, realms, and version evidence. |
 | Manager discovery | Checks `/manager/html` without treating a status code alone as proof. |
 | Proxy/Tomcat path differential | Optionally tests two semicolon path-parameter variants while preserving raw request paths. |
-| Credential validation | Supports wordlists, bounded concurrency, delay, an invalid-control request, rate-limit handling, and stop-on-success. |
+| Credential validation | Includes an auditable Tomcat corpus, optional company-derived candidates, bounded concurrency, delay, an invalid-control request, rate-limit handling, and stop-on-success. |
 | Deployment proof | Uploads a one-file static WAR through Manager HTML, verifies a random marker, and immediately undeploys it. |
+| Ghostcat assessment | Always correlates an identified version with CVE-2020-1938 and optionally performs one explicitly scoped AJP file-read request. |
 | Evidence-first output | Produces a chronological sanitized runbook and isolates confirmed credentials in a mode-`0600` inventory. |
 | Safe execution model | Plans first, follows no redirects, retries nothing automatically, ignores environment proxies, and caps response bodies. |
 
@@ -54,7 +60,7 @@ cd JerrysRevenge
 make build
 ```
 
-Generate a plan. This command sends **no HTTP requests**:
+Generate a plan. This command sends **no HTTP or AJP requests**:
 
 ```bash
 bin/jerrysrevenge -u https://tomcat.example:8443
@@ -119,6 +125,13 @@ username:password
 `username password` is also accepted. Blank lines, `#` comments, and duplicate
 pairs are ignored; passwords in colon format may contain additional colons.
 
+`--brute` uses the embedded
+[`wordlists/tomcat-common.txt`](wordlists/tomcat-common.txt) corpus when no
+`--wordlist` is supplied. The 113-pair bundled list retains the complete local
+SecLists Tomcat corpus used during development, adds selected Metasploit and
+weak lab/appliance combinations, contains `tomcat:root`, and travels inside the
+compiled binary. Supplying `--wordlist` replaces the bundled base list.
+
 ```bash
 bin/jerrysrevenge \
   --url https://tomcat.example:8443 \
@@ -134,6 +147,21 @@ The default is to stop after the first `CONFIRMED` credential. Use
 wordlist, Jerry's Revenge sends one intentionally invalid credential and
 requires the endpoint to respond with an unambiguous Basic challenge. HTTP
 `429` stops new attempts for that target.
+
+Use `--company` to add a deterministic, in-memory set of organization-derived
+user/password candidates to either base list:
+
+```bash
+bin/jerrysrevenge \
+  --url https://tomcat.example:8443 \
+  --brute \
+  --company "Example Corporation"
+```
+
+The generator combines normalized company tokens with common username, case,
+leet, suffix, and current/previous-year patterns. It is capped at 512 added
+pairs, reports only candidate counts, and redacts the company argument from the
+sanitized runbook. Review the dry-run request ceiling before adding `--execute`.
 
 ### Run the reversible deployment canary
 
@@ -183,6 +211,53 @@ titles and error pages, documentation markers, exposed version strings, and the
 can hide or mix these signals, so results are classified by confidence rather
 than forced into a yes/no answer.
 
+## CVE-2020-1938 / Ghostcat
+
+Every completed discovery run records an offline CVE-2020-1938 assessment when
+it can identify a precise Tomcat version. This comparison sends no extra
+request and never treats a version match as proof of AJP exposure or
+exploitability. EOL branches that are not explicitly covered by the Apache
+advisory remain `UNVERIFIED` rather than being guessed.
+
+Active validation is opt-in. `--ghostcat` adds exactly one AJP13
+`FORWARD_REQUEST` per target, with no retry. It defaults to the target hostname,
+port `8009`, and the web-application-relative file `WEB-INF/web.xml`:
+
+```bash
+bin/jerrysrevenge \
+  --url https://tomcat.example:8443 \
+  --ghostcat \
+  --ajp-host 10.0.0.25 \
+  --ajp-port 8009 \
+  --ghostcat-file WEB-INF/web.xml
+```
+
+With `--list`, each URL's hostname becomes that target's AJP hostname.
+`--ajp-host` is intentionally accepted only with a single `--url`, preventing
+one override from silently redirecting a multi-target run.
+
+The first invocation remains a zero-traffic plan. Add `--execute` only after
+separately confirming that the AJP host, port, file, and acquisition are within
+scope. A successful response is sensitive-data acquisition: raw bytes are
+written to a new mode-`0600` file below the mode-`0700`
+`--ghostcat-output-dir`, while terminal output and the sanitized report contain
+only protocol metadata, byte count, SHA-256, and the restricted path. Input
+paths reject URLs, literal or percent-encoded traversal, path parameters, query
+strings, fragments, backslashes, controls, and empty path segments; responses
+are capped at 1 MiB. The default `WEB-INF/web.xml` is confirmed only when XML
+web-application markers are present. For another selected file, plausible body
+bytes are preserved but the exact identity remains `INFERRED` until the
+operator reviews the restricted evidence.
+
+This mode does not upload content, evaluate JSP, execute commands, establish a
+callback, or collect multiple files. See the
+[loopback-only Docker lab](lab/ghostcat/README.md) for a reproducible validation
+fixture. Protocol and vulnerability references: [Apache AJP13
+specification](https://tomcat.apache.org/connectors-doc/ajp/ajpv13a.html),
+[Apache advisory](https://www.mail-archive.com/announce@tomcat.apache.org/msg00398.html),
+and the operator-selected [Ghostcat lab
+article](https://medium.com/@deepanshu_khanna/ghostcat-pwn-when-an-old-tomcat-vulnerability-opens-the-org-doors-62406effeed0).
+
 ## Static deployment-canary workflow
 
 The deployment check uses the authenticated, CSRF-protected Manager HTML
@@ -229,10 +304,17 @@ paths, symlinks, trailing data, and any additional entry are rejected.
 - `--threads` is a global concurrency ceiling.
 - `--delay` applies globally between request starts.
 - Environment proxy variables are ignored to avoid accidental scope expansion.
-- Response bodies are limited to 1 MiB and are not persisted verbatim.
+- HTTP response bodies are limited to 1 MiB and are not persisted verbatim;
+  Ghostcat raw bytes use the restricted-evidence exception below.
 - Authorization values, cookies, passwords, and CSRF nonces are excluded from
   normal output and reports.
 - Credential findings are isolated from the sanitized report.
+- Company-derived credential values are generated in memory and omitted from
+  normal output and sanitized reports.
+- Ghostcat is never active unless both `--ghostcat` and `--execute` are present;
+  it sends one AJP request per target with no retry.
+- Raw Ghostcat response bytes are stored only as mode-`0600` restricted
+  evidence; normal output carries metadata and a hash.
 - Deployment never reuses a semicolon bypass path.
 - The canary contains no server-side executable content.
 
@@ -259,6 +341,10 @@ The inventory is created with mode `0600`. Both directories are ignored by
 Git and must remain outside normal report exports and shared evidence bundles.
 Use `--report` and `--credential-inventory` to select different locations.
 
+Successful Ghostcat response bodies are kept separately under
+`restricted/ghostcat/` by default. Treat those files as acquired target data;
+do not add them to source control or ordinary evidence bundles.
+
 ## CLI reference
 
 | Option | Purpose |
@@ -267,9 +353,15 @@ Use `--report` and `--credential-inventory` to select different locations.
 | `-l, --list FILE` | Read one base URL per line. |
 | `--trybypass` | Test the two semicolon path variants. |
 | `-b, --brute` | Enable Manager credential validation. |
-| `-w, --wordlist FILE` | Supply `username:password` candidates. |
+| `-w, --wordlist FILE` | Replace the bundled `username:password` candidate list. |
+| `--company NAME` | Add a bounded set of organization-derived candidates; requires `--brute`. |
 | `-t, --threads N` | Set the global concurrent-request limit; default `4`. |
 | `--continue-on-success` | Continue after a confirmed credential. |
+| `--ghostcat` | Request one explicitly authorized AJP file-read validation per target. |
+| `--ghostcat-file PATH` | Select a web-application-relative file; default `WEB-INF/web.xml`. |
+| `--ghostcat-output-dir DIR` | Select the restricted evidence directory; default `restricted/ghostcat`. |
+| `--ajp-host HOST` | Override the AJP hostname for a single `--url` target. |
+| `--ajp-port PORT` | Select the AJP port; default `8009`. |
 | `-e, --exploit` | Run the reversible static deployment-canary check. |
 | `-U, --username USER` | Supply a direct Manager username for the canary. |
 | `-P, --password VALUE` | Supply a direct Manager password; visible in process arguments. |
@@ -315,14 +407,17 @@ HTTP tests use ephemeral loopback listeners only. See
 
 ## Roadmap
 
-Explicit workflow selection and separately scoped CVE-2020-1938/AJP support are
-design topics in [`ROADMAP.md`](ROADMAP.md). They are **not implemented** and do
-not authorize scanning or exploitation of AJP services.
+Explicit workflow selection and possible future AJP shared-secret support are
+tracked in [`ROADMAP.md`](ROADMAP.md). Implemented Ghostcat file-read support
+still requires the explicit `--ghostcat --execute` gate and separate scope for
+the AJP endpoint and selected resource.
 
 ## Current limitations
 
-- Only HTTP(S) is implemented in the Go binary; AJP, JMX/RMI, and adjacent
-  services are not automatically scanned.
+- AJP support is limited to one explicitly selected Ghostcat file-read request;
+  there is no general AJP, JMX/RMI, or adjacent-service scanner.
+- Ghostcat shared-secret authentication and virtual-host/context selection are
+  not implemented.
 - There is no broad directory discovery or form-login support.
 - Reverse proxies, custom pages, and caches can obscure version evidence.
 - A few already in-flight requests may finish after another worker confirms a
